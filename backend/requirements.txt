@@ -1,0 +1,11 @@
+fastapi==0.162.5
+pydantic==2.14.3
+pydantic-settings>=2.8.0
+google-genai>=3.2.0
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
+psycopg[binary]>=3.2.0
+pgvector>=0.3.6
+uvicorn>=0.34.0
+pytest>=8.3.0
+httpx>=0.28.0
