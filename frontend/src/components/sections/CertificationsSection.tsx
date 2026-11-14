@@ -32,7 +32,10 @@ export function CertificationsSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div
+          id="card-certifications"
+          className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 data-[highlighted=true]:ring-4 data-[highlighted=true]:ring-[#38BDF8] p-1"
+        >
           {CERTIFICATION_RECORDS.map((cert) => (
             <Card
               key={cert.id}

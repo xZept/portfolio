@@ -32,6 +32,10 @@ describe("Neo-Brutalist Sky Blue Visual System & Constitution Discipline", () =>
     const files = collectSourceFiles(srcDir);
     expect(files.length).toBeGreaterThan(5);
 
+    const fileNames = files.map((file) => path.basename(file));
+    expect(fileNames).toContain("FloatingAskTrigger.tsx");
+    expect(fileNames).toContain("AskResumeDrawer.tsx");
+
     for (const file of files) {
       const content = fs.readFileSync(file, "utf-8");
       for (const pattern of PROHIBITED_PATTERNS) {
@@ -57,7 +61,7 @@ describe("Neo-Brutalist Sky Blue Visual System & Constitution Discipline", () =>
     expect(css).toContain("scroll-margin-top");
   });
 
-  it("renders all 7 mandated sections and enforces hard offset shadows in DOM output", () => {
+  it("renders all 7 mandated sections, deterministic card IDs, floating trigger, and hard offset shadows", () => {
     const { container } = render(<HomePage />);
 
     for (const sectionId of [
@@ -71,6 +75,20 @@ describe("Neo-Brutalist Sky Blue Visual System & Constitution Discipline", () =>
     ]) {
       expect(container.querySelector(`#${sectionId}`)).not.toBeNull();
     }
+
+    for (const cardId of [
+      "card-work-suhay",
+      "card-work-dacon",
+      "card-project-fitquest",
+      "card-education-bpsu",
+      "card-certifications",
+    ]) {
+      expect(container.querySelector(`#${cardId}`)).not.toBeNull();
+    }
+
+    expect(
+      container.querySelector('[data-testid="floating-ask-resume-trigger"]'),
+    ).not.toBeNull();
 
     const html = container.innerHTML;
     expect(html).toContain("4px_4px_0px_#0F172A");

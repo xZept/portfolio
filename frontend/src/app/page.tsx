@@ -13,6 +13,7 @@ import { CertificationsSection } from "@/components/sections/CertificationsSecti
 import { ContactSection } from "@/components/sections/ContactSection";
 import { CaseStudyModal } from "@/components/overlays/CaseStudyModal";
 import { AskResumeDrawer } from "@/components/overlays/AskResumeDrawer";
+import { FloatingAskTrigger } from "@/components/overlays/FloatingAskTrigger";
 
 const SECTION_IDS = NAV_SECTIONS.map((item) => item.id);
 
@@ -67,6 +68,10 @@ export default function HomePage() {
         entry={selectedCaseStudy}
         onClose={() => setSelectedCaseStudy(null)}
         onAskAiAboutProject={(entry) => handleOpenAskResume(entry)}
+      />
+      <FloatingAskTrigger
+        onClick={() => handleOpenAskResume()}
+        isOpen={askResumeState.open}
       />
       <AskResumeDrawer
         open={askResumeState.open}

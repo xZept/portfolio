@@ -13,6 +13,12 @@ export interface ExperienceSectionProps {
   onAskAiAboutProject: (entry: ExperienceEntry) => void;
 }
 
+const EXPERIENCE_CARD_IDS: Record<ExperienceEntry["id"], string> = {
+  suhaycore: "card-work-suhay",
+  dan: "card-work-dacon",
+  fitquest: "card-project-fitquest",
+};
+
 export function ExperienceSection({
   onOpenCaseStudy,
   onAskAiAboutProject,
@@ -47,8 +53,9 @@ export function ExperienceSection({
             return (
               <Card
                 key={entry.id}
+                id={EXPERIENCE_CARD_IDS[entry.id]}
                 tone="white"
-                className={`flex flex-col overflow-hidden ${
+                className={`flex flex-col overflow-hidden data-[highlighted=true]:ring-4 data-[highlighted=true]:ring-[#38BDF8] transition-shadow ${
                   isFullSpanOnDesktop ? "lg:col-span-2 lg:grid lg:grid-cols-12" : ""
                 }`}
               >

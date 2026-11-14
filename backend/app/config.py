@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     service_version: str = "1.0.0"
     gemini_api_key: str = Field(default="")
     supabase_db_url: str = Field(default="")
+    supabase_url: str = Field(default="")
+    supabase_service_role_key: str = Field(default="")
     cors_origins: str = Field(default="http://localhost:3000")
     gemini_model: str = Field(default="gemini-3.5-flash-lite")
     embedding_model: str = Field(default="gemini-embedding-2")

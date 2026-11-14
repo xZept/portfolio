@@ -173,3 +173,12 @@
     margin-bottom: 0.5rem;
   }
 }
+
+[id^="card-"] {
+  scroll-margin-top: 6rem;
+}
+
+[data-highlighted="true"] {
+  outline: 4px solid #38BDF8;
+  outline-offset: 2px;
+}

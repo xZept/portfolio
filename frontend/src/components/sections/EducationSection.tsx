@@ -26,7 +26,11 @@ export function EducationSection() {
           </h2>
         </div>
 
-        <Card tone="white" className="overflow-hidden">
+        <Card
+          id="card-education-bpsu"
+          tone="white"
+          className="overflow-hidden data-[highlighted=true]:ring-4 data-[highlighted=true]:ring-[#38BDF8] transition-shadow"
+        >
           <div className="grid grid-cols-1 items-center gap-6 p-6 sm:p-8 md:grid-cols-12">
             <div className="md:col-span-4 flex justify-center">
               <div className="relative h-44 w-44 sm:h-48 sm:w-48 overflow-hidden border-2 border-[#0F172A] bg-[#F8FAFC] p-4 shadow-[4px_4px_0px_#0F172A]">
