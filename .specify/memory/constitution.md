@@ -1,15 +1,13 @@
 <!--
 Sync Impact Report
-- Version change: [CONSTITUTION_VERSION] (uninitialized template) → 1.0.0
+- Version change: 1.0.0 → 1.1.0
 - Modified principles:
-  - [PRINCIPLE_1_NAME] → I. Pinned Monorepo Stack Discipline
-  - [PRINCIPLE_2_NAME] → II. Neo-Brutalist Sky Blue Visual System
-  - [PRINCIPLE_3_NAME] → III. Anti-Vibe-Coding Visual Discipline (NON-NEGOTIABLE)
-  - [PRINCIPLE_4_NAME] → IV. Strict Type Safety & Validation Gates (NON-NEGOTIABLE)
-  - [PRINCIPLE_5_NAME] → Removed (consolidated into 4 core principles matching user input)
-- Added sections:
-  - Technology Stack & Infrastructure (from [SECTION_2_NAME])
-  - Visual Specifications & Quality Gates (from [SECTION_3_NAME])
+  - None (Principles I–IV unchanged)
+- Added principles:
+  - V. Git-First Database Migrations via Supabase MCP (NON-NEGOTIABLE)
+- Modified sections:
+  - Visual Specifications & Quality Gates (added Database Migration Gate)
+  - Governance (updated Compliance Review to cover all five Core Principles)
 - Removed sections:
   - None
 - Follow-up TODOs:
@@ -66,6 +64,22 @@ warnings before merge or deployment.
 **Rationale**: Enforcing schema validation at API boundaries and zero-warning static analysis on
 the frontend catches contract mismatches and regressions before production deployment.
 
+### V. Git-First Database Migrations via Supabase MCP (NON-NEGOTIABLE)
+All database schema inspections and migrations MUST be executed through the connected Supabase MCP
+server (`supabase_mcp`), while preserving full schema reproducibility in Git:
+- **Versioned SQL First**: Every schema change MUST be authored and saved as a versioned `.sql`
+  migration file in `apps/api/migrations/` BEFORE being applied to the database.
+- **MCP Inspection & Execution**: Schema state, existing migrations, and extensions MUST be inspected
+  via the connected Supabase MCP server (e.g., `list_tables`, `list_migrations`), and migrations
+  MUST be applied through the MCP server (`apply_migration`) using the exact SQL committed in
+  `apps/api/migrations/`.
+- **No Unrecorded Drift**: Ad-hoc DDL changes directly in the database dashboard or via raw SQL
+  without a corresponding versioned file in `apps/api/migrations/` are strictly prohibited.
+
+**Rationale**: Saving versioned `.sql` files in `apps/api/migrations/` prior to applying them via
+the Supabase MCP server keeps Git as the single source of truth for database schema history and
+ensures environments can be reproduced deterministically.
+
 ## Technology Stack & Infrastructure
 
 | Layer | Mandated Technologies & Versions |
@@ -97,6 +111,7 @@ the frontend catches contract mismatches and regressions before production deplo
 1. **Backend Validation Gate**: Every FastAPI route MUST have corresponding automated tests verifying Pydantic 2.14.3 input/output validation.
 2. **TypeScript Gate**: Frontend code MUST pass `tsc --noEmit` with zero type errors.
 3. **Linter Gate**: Frontend code MUST pass `next lint` with zero warnings and zero errors.
+4. **Database Migration Gate**: Every schema change MUST have a corresponding versioned `.sql` file in `apps/api/migrations/` saved before applying via the connected Supabase MCP server.
 
 ## Governance
 
@@ -111,7 +126,7 @@ within the portfolio monorepo.
   - **MINOR**: Addition of new principles, new stack layers, or materially expanded compliance guidance.
   - **PATCH**: Wording clarifications, formatting fixes, or non-semantic refinements.
 - **Compliance Review**: Every specification (`/speckit-specify`), implementation plan (`/speckit-plan`),
-  task list (`/speckit-tasks`), and pull request MUST verify compliance with all four Core Principles
+  task list (`/speckit-tasks`), and pull request MUST verify compliance with all five Core Principles
   before implementation or merge.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-13 | **Last Amended**: 2026-11-13
+**Version**: 1.1.0 | **Ratified**: 2026-11-13 | **Last Amended**: 2026-11-14
