@@ -878,7 +878,7 @@ export async function askResumeStream(
   const trimmedQuestion = payload.question.trim();
   const baseUrl =
     options?.apiUrl ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-  const timeoutMs = options?.timeoutMs ?? 8000;
+  const timeoutMs = options?.timeoutMs ?? 45000;
   const localChunkDelayMs = options?.localChunkDelayMs ?? 4;
 
   const streamFallback = async (): Promise<AskResumeResponsePayload> => {
