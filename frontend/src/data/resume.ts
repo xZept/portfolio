@@ -28,6 +28,31 @@ export interface CaseStudyDetail {
   deliveryStatus: string;
 }
 
+export type BentoColSpan =
+  | "lg:col-span-12"
+  | "lg:col-span-8"
+  | "lg:col-span-7"
+  | "lg:col-span-6"
+  | "lg:col-span-5"
+  | "lg:col-span-4";
+
+export type BentoRowSpan = "lg:row-span-1" | "lg:row-span-2";
+
+export type BentoCardLayout = "horizontal-split" | "vertical-stack";
+
+export interface ExperienceBentoLayout {
+  /** Explicit desktop column span class in the 12-column Bento Grid */
+  colSpan: BentoColSpan;
+  /** Explicit desktop row span class in the 12-column Bento Grid */
+  rowSpan: BentoRowSpan;
+  /** Whether the entry is highlighted as a featured flagship deliverable */
+  isFeatured: boolean;
+  /** Internal card geometry on desktop viewports */
+  cardLayout: BentoCardLayout;
+  /** Responsive Next/Image sizes hint matching the Bento cell width */
+  imageSizes: string;
+}
+
 export interface ExperienceEntry {
   id: ExperienceId;
   title: string;
@@ -42,6 +67,7 @@ export interface ExperienceEntry {
   techTags: string[];
   caseStudy: CaseStudyDetail;
   askAiPrompt: string;
+  bento: ExperienceBentoLayout;
 }
 
 export interface MilestoneItem {
@@ -153,6 +179,13 @@ export const EXPERIENCE_ENTRIES: ExperienceEntry[] = [
     },
     askAiPrompt:
       "Tell me about Allen's architecture, security controls, and delivery status for SuhayCore at Orani Suhay Foundation.",
+    bento: {
+      colSpan: "lg:col-span-12",
+      rowSpan: "lg:row-span-1",
+      isFeatured: true,
+      cardLayout: "horizontal-split",
+      imageSizes: "(max-width: 1024px) 100vw, 560px",
+    },
   },
   {
     id: "dan",
@@ -200,6 +233,13 @@ export const EXPERIENCE_ENTRIES: ExperienceEntry[] = [
     },
     askAiPrompt:
       "How did Allen engineer the DAN RAG AI chatbot, FastAPI backend, and monitoring dashboard at DACON Corporation?",
+    bento: {
+      colSpan: "lg:col-span-7",
+      rowSpan: "lg:row-span-1",
+      isFeatured: true,
+      cardLayout: "vertical-stack",
+      imageSizes: "(max-width: 1024px) 100vw, 640px",
+    },
   },
   {
     id: "fitquest",
@@ -231,6 +271,13 @@ export const EXPERIENCE_ENTRIES: ExperienceEntry[] = [
     },
     askAiPrompt:
       "What did Allen build in FitQuest using Kotlin, Room Database, and the FoodData Central REST API?",
+    bento: {
+      colSpan: "lg:col-span-5",
+      rowSpan: "lg:row-span-1",
+      isFeatured: false,
+      cardLayout: "vertical-stack",
+      imageSizes: "(max-width: 1024px) 100vw, 460px",
+    },
   },
 ];
 

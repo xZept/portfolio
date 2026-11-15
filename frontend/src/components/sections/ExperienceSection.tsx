@@ -47,22 +47,25 @@ export function ExperienceSection({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {EXPERIENCE_ENTRIES.map((entry, idx) => {
-            const isFullSpanOnDesktop = idx === 2;
+        <div
+          data-testid="experience-bento-grid"
+          className="grid grid-cols-1 gap-6 pb-2 pr-1 sm:gap-8 lg:grid-cols-12"
+        >
+          {EXPERIENCE_ENTRIES.map((entry) => {
+            const isHorizontalSplit = entry.bento.cardLayout === "horizontal-split";
             return (
               <Card
                 key={entry.id}
                 id={EXPERIENCE_CARD_IDS[entry.id]}
                 tone="white"
-                className={`flex flex-col overflow-hidden data-[highlighted=true]:ring-4 data-[highlighted=true]:ring-[#38BDF8] transition-shadow ${
-                  isFullSpanOnDesktop ? "lg:col-span-2 lg:grid lg:grid-cols-12" : ""
+                className={`flex min-w-0 max-w-full flex-col overflow-hidden transition-shadow data-[highlighted=true]:ring-4 data-[highlighted=true]:ring-[#38BDF8] ${entry.bento.colSpan} ${entry.bento.rowSpan} ${
+                  isHorizontalSplit ? "lg:grid lg:grid-cols-12" : ""
                 }`}
               >
                 <div
-                  className={`relative border-b-2 border-[#0F172A] bg-[#F8FAFC] ${
-                    isFullSpanOnDesktop
-                      ? "lg:col-span-5 lg:border-b-0 lg:border-r-2"
+                  className={`relative min-w-0 max-w-full overflow-hidden border-b-2 border-[#0F172A] bg-[#F8FAFC] ${
+                    isHorizontalSplit
+                      ? "lg:col-span-6 lg:flex lg:flex-col lg:border-b-0 lg:border-r-2"
                       : ""
                   }`}
                 >
@@ -79,25 +82,26 @@ export function ExperienceSection({
                     </span>
                   </div>
 
-                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#FFFFFF]">
+                  <div
+                    data-testid={`bento-media-stage-${entry.id}`}
+                    className={`relative aspect-video w-full min-w-0 max-w-full overflow-hidden bg-[#F8FAFC] bg-[radial-gradient(#CBD5E1_1px,transparent_1px)] [background-size:16px_16px] ${
+                      isHorizontalSplit ? "lg:my-auto" : ""
+                    }`}
+                  >
                     <Image
                       src={entry.previewImage}
                       alt={`${entry.title} visual preview`}
                       fill
                       unoptimized={entry.isAnimatedGif}
-                      sizes={
-                        isFullSpanOnDesktop
-                          ? "(max-width: 1024px) 100vw, 480px"
-                          : "(max-width: 1024px) 100vw, 560px"
-                      }
-                      className="object-cover object-top"
+                      sizes={entry.bento.imageSizes}
+                      className="object-contain p-2 sm:p-3"
                     />
                   </div>
                 </div>
 
                 <div
-                  className={`flex flex-1 flex-col justify-between p-5 sm:p-6 ${
-                    isFullSpanOnDesktop ? "lg:col-span-7" : ""
+                  className={`flex min-w-0 max-w-full flex-1 flex-col justify-between overflow-hidden p-5 sm:p-6 ${
+                    isHorizontalSplit ? "lg:col-span-6" : ""
                   }`}
                 >
                   <div className="space-y-4">
