@@ -2,10 +2,37 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { MapPin, MessageSquareText, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Download,
+  MapPin,
+  MessageSquareText,
+  Sparkles,
+} from "lucide-react";
 import { PROFILE_SUMMARY } from "@/data/resume";
 import type { SectionId } from "@/lib/use-active-section";
 import { Button } from "@/components/ui/button";
+
+export type ResumeDownloadState = "idle" | "downloading" | "downloaded" | "error";
+
+const RESUME_PUBLIC_PATH = "/resume/Laxamana_Resume_DotNet_FullStack.pdf";
+const RESUME_DOWNLOAD_FILENAME = "Laxamana_Resume_DotNet_FullStack.pdf";
+const DOWNLOAD_RESET_DELAY_MS = 2500;
+
+const DOWNLOAD_LABELS: Record<ResumeDownloadState, string> = {
+  idle: "Download Resume",
+  downloading: "Downloading...",
+  downloaded: "Downloaded",
+  error: "Resume Unavailable",
+};
+
+const DOWNLOAD_ANNOUNCEMENTS: Record<ResumeDownloadState, string> = {
+  idle: "",
+  downloading: "Downloading resume",
+  downloaded: "Resume downloaded",
+  error: "Resume file is currently unavailable",
+};
 
 export interface HeroSectionProps {
   onSelectExperience: (id: SectionId) => void;
@@ -16,6 +43,69 @@ export function HeroSection({
   onSelectExperience,
   onOpenAskResume,
 }: HeroSectionProps) {
+  const [downloadState, setDownloadState] = React.useState<ResumeDownloadState>("idle");
+  const resetTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearResetTimeout = React.useCallback(() => {
+    if (resetTimeoutRef.current !== null) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      clearResetTimeout();
+    };
+  }, [clearResetTimeout]);
+
+  const scheduleReset = React.useCallback(() => {
+    clearResetTimeout();
+    resetTimeoutRef.current = setTimeout(() => {
+      setDownloadState("idle");
+      resetTimeoutRef.current = null;
+    }, DOWNLOAD_RESET_DELAY_MS);
+  }, [clearResetTimeout]);
+
+  const handleDownloadResume = async () => {
+    if (downloadState === "downloading") {
+      return;
+    }
+
+    clearResetTimeout();
+    setDownloadState("downloading");
+
+    try {
+      const response = await fetch(RESUME_PUBLIC_PATH);
+      if (!response.ok) {
+        throw new Error(`Resume download failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = RESUME_DOWNLOAD_FILENAME;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+
+      setDownloadState("downloaded");
+      scheduleReset();
+    } catch {
+      setDownloadState("error");
+      scheduleReset();
+    }
+  };
+
+  const downloadButtonLabel = DOWNLOAD_LABELS[downloadState];
+  const downloadLiveAnnouncement = DOWNLOAD_ANNOUNCEMENTS[downloadState];
+
   return (
     <section
       id="top"
@@ -67,6 +157,32 @@ export function HeroSection({
               <MessageSquareText className="h-4 w-4" aria-hidden="true" />
               <span>Ask My Resume</span>
             </Button>
+
+            <Button
+              variant={downloadState === "downloaded" ? "primary" : "secondary"}
+              size="lg"
+              onClick={handleDownloadResume}
+              disabled={downloadState === "downloading"}
+              data-state={downloadState}
+            >
+              {downloadState === "downloaded" ? (
+                <Check className="h-4 w-4" aria-hidden="true" />
+              ) : downloadState === "error" ? (
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Download className="h-4 w-4" aria-hidden="true" />
+              )}
+              <span>{downloadButtonLabel}</span>
+            </Button>
+
+            <span
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="sr-only"
+            >
+              {downloadLiveAnnouncement}
+            </span>
           </div>
         </div>
 
