@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { Menu, MessageSquareText, X } from "lucide-react";
 import { NAV_SECTIONS, PROFILE_SUMMARY } from "@/data/resume";
 import type { SectionId } from "@/lib/use-active-section";
@@ -36,9 +37,16 @@ export function StickyHeader({
         >
           <span
             aria-hidden="true"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[#0F172A] bg-[#38BDF8] text-xs font-black text-[#0F172A] shadow-[4px_4px_0px_#0F172A]"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden border-2 border-[#0F172A] bg-[#38BDF8] shadow-[4px_4px_0px_#0F172A]"
           >
-            AJ
+            <Image
+              src="/images/others/logo.png"
+              alt=""
+              width={32}
+              height={32}
+              className="h-full w-full object-contain"
+              priority
+            />
           </span>
           <span className="truncate text-sm sm:text-lg">{PROFILE_SUMMARY.fullName}</span>
         </a>

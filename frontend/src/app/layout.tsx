@@ -5,6 +5,11 @@ export const metadata: Metadata = {
   title: "Allen James Laxamana | Junior .NET / Full-Stack Developer",
   description:
     "Portfolio of Allen James Laxamana — Computer Science graduate (BPSU, 2026), Junior .NET / Full-Stack Developer specializing in C# (.NET 10), Blazor, FastAPI, PostgreSQL, and enterprise RAG AI.",
+  icons: {
+    icon: "/images/others/logo.png",
+    shortcut: "/images/others/logo.png",
+    apple: "/images/others/logo.png",
+  },
 };
 
 export default function RootLayout({
