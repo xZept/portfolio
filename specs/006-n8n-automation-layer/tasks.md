@@ -169,3 +169,10 @@ Task: "Author n8n workflow in automation/n8n/workflows/contact-lead-triage.workf
 3. Add **US2 (Contact Lead Triage)** → Test non-blocking `< 1s` submission & Discord alert → Deploy/Demo.
 4. Add **US3 (Weekly Watchdog)** → Test stale chunk cleanup & conditional Discord alert → Deploy/Demo.
 5. Run **Phase 6: Polish** → All constitutional quality gates pass.
+
+---
+
+## Phase 7: Convergence
+
+- [X] T030 Broaden `ResumeCitation.section` in `backend/app/schemas/ask_resume.py` (`str` with `min_length=1`) and update `_retrieve_pgvector_chunks` in `backend/app/services/rag_service.py` so synced `README.md` and `docs/**/*.md` chunks with valid canonical citation targets (`badge_label`, `target_section_id`, `target_card_id`) are returned instead of skipped, with an automated test in `backend/tests/test_automation_validation.py` per US1 (partial)
+- [X] T031 Configure `retryOnFail: true` (`maxTries: 3`, `waitBetweenTries: 1000`) on the `POST Discord Notification` HTTP Request node in `automation/n8n/workflows/contact-lead-triage.workflow.json` before falling back to `notification_sent = false` per FR-007 (partial)

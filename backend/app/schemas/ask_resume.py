@@ -85,15 +85,22 @@ class AskResumeRequest(BaseModel):
 
 
 class ResumeCitation(BaseModel):
-    """Source citation anchored to a section of docs/resume.md and portfolio card target."""
+    """Source citation anchored to a section of docs/resume.md or synced documentation and portfolio card target."""
 
     model_config = ConfigDict(extra="forbid")
 
-    section: ResumeSectionName
+    section: str = Field(..., min_length=1)
     snippet: str = Field(..., min_length=1)
     badge_label: CitationBadgeLabel
     target_section_id: TargetSectionId
     target_card_id: TargetCardId
+
+    @field_validator("section", mode="before")
+    @classmethod
+    def strip_section(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -102,6 +109,9 @@ class ResumeCitation(BaseModel):
             return data
         payload = dict(data)
         section = payload.get("section")
+        if isinstance(section, str):
+            section = section.strip()
+            payload["section"] = section
         if isinstance(section, str) and section in SECTION_CITATION_DEFAULTS:
             default_badge, default_section_id, default_card_id = (
                 SECTION_CITATION_DEFAULTS[section]  # type: ignore[index]

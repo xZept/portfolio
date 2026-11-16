@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Generator
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.main import app
-from app.services import automation_service, seed_resume_chunks
+from app.schemas.ask_resume import ResumeCitation
+from app.services import automation_service, rag_service, seed_resume_chunks
 from app.services.automation_security import compute_automation_signature
 
 TEST_SECRET = "test-automation-secret-32bytes-hex"
@@ -627,3 +630,124 @@ def test_parse_markdown_document_canonical_constraints_and_hashes() -> None:
 
     empty_chunks = seed_resume_chunks.parse_markdown_document("docs/empty.md", "   \n\t  ")
     assert empty_chunks == []
+
+
+def test_retrieve_pgvector_chunks_returns_synced_doc_chunks_with_canonical_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeModels:
+        def embed_content(self, **_kwargs: object) -> object:
+            return SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[0.01] * 768)]
+            )
+
+    class _FakeGenAIClient:
+        def __init__(self, api_key: str) -> None:
+            self.api_key = api_key
+            self.models = _FakeModels()
+
+    class _FakeCursor:
+        def __enter__(self) -> "_FakeCursor":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, _sql: str, _params: dict[str, object]) -> None:
+            return None
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return [
+                (
+                    "README.md - Portfolio",
+                    "[Work: Orani Suhay Foundation]",
+                    "about",
+                    "card-work-suhay",
+                    None,
+                    "Built SuhayCore and FitQuest.",
+                    0.89,
+                ),
+                (
+                    "docs/notes/architecture.md - Deployment",
+                    "[Project: FitQuest]",
+                    "experience",
+                    "card-project-fitquest",
+                    "fitquest",
+                    "Deployed on Render and Vercel.",
+                    0.84,
+                ),
+                (
+                    "docs/bad.md - Bad",
+                    "[Invalid Badge]",
+                    "about",
+                    "card-work-suhay",
+                    None,
+                    "Should be skipped",
+                    0.80,
+                ),
+            ]
+
+    class _FakeConn:
+        def __enter__(self) -> "_FakeConn":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def cursor(self) -> _FakeCursor:
+            return _FakeCursor()
+
+    import google.genai as genai_module
+    import psycopg
+
+    monkeypatch.setattr(genai_module, "Client", _FakeGenAIClient)
+    monkeypatch.setattr(psycopg, "connect", lambda *_args, **_kwargs: _FakeConn())
+
+    # Whitespace-only section still fails strict ResumeCitation validation
+    with pytest.raises(ValidationError):
+        ResumeCitation(
+            section="   ",
+            snippet="Valid snippet",
+            badge_label="[Work: Orani Suhay Foundation]",
+            target_section_id="about",
+            target_card_id="card-work-suhay",
+        )
+
+    test_settings = Settings(
+        gemini_api_key="test-gemini-key",
+        supabase_db_url="postgresql://postgres:secret@localhost:5432/postgres",
+    )
+    citations = rag_service._retrieve_pgvector_chunks(
+        "How is the portfolio deployed?",
+        test_settings,
+    )
+
+    assert len(citations) == 2
+    assert citations[0].section == "README.md - Portfolio"
+    assert citations[0].badge_label == "[Work: Orani Suhay Foundation]"
+    assert citations[0].target_section_id == "about"
+    assert citations[0].target_card_id == "card-work-suhay"
+    assert citations[1].section == "docs/notes/architecture.md - Deployment"
+    assert citations[1].badge_label == "[Project: FitQuest]"
+    assert citations[1].target_section_id == "experience"
+    assert citations[1].target_card_id == "card-project-fitquest"
+
+
+def test_contact_lead_triage_workflow_discord_retry_configuration() -> None:
+    workflow_path = (
+        Path(__file__).resolve().parents[2]
+        / "automation"
+        / "n8n"
+        / "workflows"
+        / "contact-lead-triage.workflow.json"
+    )
+    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    discord_nodes = [
+        node for node in workflow["nodes"] if node.get("name") == "POST Discord Notification"
+    ]
+    assert len(discord_nodes) == 1
+    discord_node = discord_nodes[0]
+    assert discord_node.get("retryOnFail") is True
+    assert discord_node.get("maxTries") == 3
+    assert discord_node.get("waitBetweenTries") == 1000
+    assert discord_node.get("continueOnFail") is True

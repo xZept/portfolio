@@ -11,7 +11,6 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.schemas.ask_resume import (
-    SECTION_CITATION_DEFAULTS,
     AskResumeRequest,
     AskResumeResponse,
     AskResumeStreamDoneEvent,
@@ -693,12 +692,12 @@ def _retrieve_pgvector_chunks(
         if len(row) < 6:
             continue
         section, badge_label, target_section_id, target_card_id, _project_id, content = row[:6]
-        if section not in SECTION_CITATION_DEFAULTS or not content:
+        if not isinstance(section, str) or not section.strip() or not content:
             continue
         try:
             citations.append(
                 ResumeCitation(
-                    section=section,
+                    section=section.strip(),
                     snippet=str(content),
                     badge_label=badge_label,
                     target_section_id=target_section_id,
