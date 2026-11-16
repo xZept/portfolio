@@ -1,0 +1,205 @@
+{
+  "name": "GitHub-to-RAG Documentation Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-push",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000001",
+      "name": "GitHub Push Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "github-push-rag-sync"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst headers = input.headers || {};\nconst body = input.body || input;\n\nconst branchRef = body.ref || '';\nif (branchRef !== 'refs/heads/main') {\n  return [{ json: { ignore: true, reason: 'non-main branch', ref: branchRef } }];\n}\n\nconst docPathRegex = /^(README\\.md|docs\\/[A-Za-z0-9_.\\/-]+\\.md)$/;\nconst isSafeDocPath = (p) => typeof p === 'string' && !p.includes('..') && !p.includes('//') && !p.startsWith('/') && docPathRegex.test(p);\n\nconst commits = Array.isArray(body.commits) ? [...body.commits] : [];\ncommits.sort((a, b) => {\n  const ta = a && a.timestamp ? Date.parse(a.timestamp) : 0;\n  const tb = b && b.timestamp ? Date.parse(b.timestamp) : 0;\n  return ta - tb;\n});\n\nconst fileState = new Map();\nconst inlineContents = Object.assign({}, body.inline_files || {});\n\nfor (const commit of commits) {\n  if (!commit || typeof commit !== 'object') continue;\n  if (commit.inline_files && typeof commit.inline_files === 'object') {\n    Object.assign(inlineContents, commit.inline_files);\n  }\n  for (const p of (commit.added || [])) {\n    if (isSafeDocPath(p)) fileState.set(p, 'upsert');\n  }\n  for (const p of (commit.modified || [])) {\n    if (isSafeDocPath(p)) fileState.set(p, 'upsert');\n  }\n  for (const p of (commit.removed || [])) {\n    if (isSafeDocPath(p)) fileState.set(p, 'remove');\n  }\n}\n\nconst upsertedPaths = [];\nconst removedPaths = [];\nfor (const [filePath, action] of fileState.entries()) {\n  if (action === 'upsert') upsertedPaths.push(filePath);\n  else if (action === 'remove') removedPaths.push(filePath);\n}\n\nif (upsertedPaths.length === 0 && removedPaths.length === 0) {\n  return [{ json: { ignore: true, reason: 'no documentation changes' } }];\n}\n\nconst deliveryId = String(\n  headers['x-github-delivery'] || headers['X-GitHub-Delivery'] || body.delivery_id || `${body.after || 'manual'}-${Date.now()}`\n);\nconst commitSha = String(body.after || (commits[commits.length - 1] && commits[commits.length - 1].id) || '0000000');\n\nreturn [{\n  json: {\n    ignore: false,\n    delivery_id: deliveryId,\n    commit_sha: commitSha,\n    branch: 'main',\n    upserted_paths: upsertedPaths,\n    removed_paths: removedPaths,\n    inline_contents: inlineContents\n  }\n}];"
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000002",
+      "name": "Filter Main Branch & Docs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-doc-changes",
+              "leftValue": "={{ $json.ignore }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000003",
+      "name": "Any Doc Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ignored', reason: $json.reason }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000004",
+      "name": "Respond Ignored",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst item = $input.first().json;\nconst rawBase = ($env.GITHUB_RAW_BASE_URL || 'https://raw.githubusercontent.com/xZept/portfolio/main').replace(/\\/+$/, '');\nconst githubToken = ($env.GITHUB_TOKEN || '').trim();\nconst secret = ($env.AUTOMATION_WEBHOOK_SECRET || '').trim();\n\nif (!secret) {\n  throw new Error('AUTOMATION_WEBHOOK_SECRET environment variable is required.');\n}\n\nconst upsertedFiles = [];\nfor (const filePath of (item.upserted_paths || [])) {\n  let content;\n  if (item.inline_contents && typeof item.inline_contents[filePath] === 'string') {\n    content = item.inline_contents[filePath];\n  } else {\n    const fetchHeaders = {};\n    if (githubToken) {\n      fetchHeaders['Authorization'] = `Bearer ${githubToken}`;\n    }\n    const resp = await fetch(`${rawBase}/${filePath}`, { headers: fetchHeaders });\n    if (!resp.ok) {\n      throw new Error(`Failed to fetch ${filePath} from ${rawBase}: HTTP ${resp.status}`);\n    }\n    content = await resp.text();\n  }\n  upsertedFiles.push({ file_path: filePath, content });\n}\n\nconst payload = {\n  delivery_id: item.delivery_id,\n  commit_sha: item.commit_sha,\n  branch: 'main',\n  upserted_files: upsertedFiles,\n  removed_files: item.removed_paths || []\n};\n\nconst rawBody = JSON.stringify(payload);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');\n\nreturn [{\n  json: {\n    rawBody,\n    timestamp,\n    signature\n  }\n}];"
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000005",
+      "name": "Fetch Docs & Sign HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000').replace(/\\/+$/, '') + '/api/v1/automation/docs-sync' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Automation-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-Automation-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000006",
+      "name": "POST Docs Sync Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-1001-4000-8000-000000000007",
+      "name": "Respond Synced",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1420, 180]
+    }
+  ],
+  "connections": {
+    "GitHub Push Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter Main Branch & Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Main Branch & Docs": {
+      "main": [
+        [
+          {
+            "node": "Any Doc Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Doc Changes?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Docs & Sign HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ignored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Docs & Sign HMAC": {
+      "main": [
+        [
+          {
+            "node": "POST Docs Sync Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Docs Sync Callback": {
+      "main": [
+        [
+          {
+            "node": "Respond Synced",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila"
+  },
+  "versionId": "006-github-rag-sync-v1",
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

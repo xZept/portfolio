@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -39,6 +40,10 @@ class SeedChunk:
     project_id: str | None
     content: str
     metadata: dict[str, Any]
+    source_path: str = "docs/resume.md"
+    commit_sha: str | None = "initial-seed"
+    content_hash: str = ""
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -168,6 +173,12 @@ def _clean_markdown_text(text: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def compute_content_hash(content: str) -> str:
+    """Return SHA-256 hex digest of normalized chunk content for idempotent sync."""
+    normalized = _clean_markdown_text(content)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _classify_section(heading_or_text: str) -> str:
     lower = heading_or_text.lower()
     if "orani suhay" in lower or "suhaycore" in lower:
@@ -185,7 +196,31 @@ def _classify_section(heading_or_text: str) -> str:
     return "summary"
 
 
-def parse_resume_markdown(markdown_text: str) -> list[SeedChunk]:
+def _infer_canonical_targets(
+    file_path: str,
+    heading: str,
+    body: str,
+) -> tuple[str, str, str, str | None]:
+    """Map general documentation chunks to canonical CHECK-constrained citation defaults."""
+    combined = f"{file_path} {heading} {body}".lower()
+    tokens = set(re.findall(r"[a-z0-9#_.+-]+", combined))
+    if "fitquest" in combined:
+        return ("[Project: FitQuest]", "experience", "card-project-fitquest", "fitquest")
+    if "dacon" in combined or "dan" in tokens:
+        return ("[Work: DACON Corp]", "experience", "card-work-dacon", "dan")
+    if "education" in combined or "bpsu" in combined:
+        return ("[Education: BPSU]", "education", "card-education-bpsu", None)
+    if "certification" in combined or "certiport" in combined or "cisco" in combined:
+        return ("[Certifications]", "certifications", "card-certifications", None)
+    if "suhaycore" in combined or "orani suhay" in combined:
+        return ("[Work: Orani Suhay Foundation]", "about", "card-work-suhay", "suhaycore")
+    return ("[Work: Orani Suhay Foundation]", "about", "card-work-suhay", None)
+
+
+def parse_resume_markdown(
+    markdown_text: str,
+    commit_sha: str = "initial-seed",
+) -> list[SeedChunk]:
     """Parse docs/resume.md into deterministic, grounded SeedChunk records."""
     lines = markdown_text.splitlines()
     buckets: dict[str, list[str]] = {key: [] for key in _SECTION_SPECS}
@@ -214,7 +249,82 @@ def parse_resume_markdown(markdown_text: str) -> list[SeedChunk]:
                 target_card_id=spec.target_card_id,
                 project_id=spec.project_id,
                 content=content,
-                metadata=spec.metadata,
+                metadata=dict(spec.metadata),
+                source_path="docs/resume.md",
+                commit_sha=commit_sha,
+                content_hash=compute_content_hash(content),
+                is_active=True,
+            )
+        )
+    return chunks
+
+
+def parse_markdown_document(
+    file_path: str,
+    markdown_text: str,
+    commit_sha: str = "initial-seed",
+) -> list[SeedChunk]:
+    """Parse README.md or docs/**/*.md into deterministic, DB-constrained SeedChunk records."""
+    if file_path == "docs/resume.md":
+        return parse_resume_markdown(markdown_text, commit_sha=commit_sha)
+
+    if not _clean_markdown_text(markdown_text):
+        return []
+
+    heading_pattern = re.compile(r"^(#{1,4})\s+(.+?)\s*$")
+    sections: list[tuple[str, list[str]]] = []
+    current_heading = "Overview"
+    current_lines: list[str] = []
+
+    for raw_line in markdown_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        match = heading_pattern.match(stripped)
+        if match:
+            if current_lines:
+                sections.append((current_heading, current_lines))
+            current_heading = match.group(2).strip()
+            current_lines = [stripped]
+        else:
+            current_lines.append(stripped)
+
+    if current_lines:
+        sections.append((current_heading, current_lines))
+
+    used_slugs: dict[str, int] = {}
+    chunks: list[SeedChunk] = []
+    for heading_title, section_lines in sections:
+        content = _clean_markdown_text("\n".join(section_lines))
+        if not content:
+            continue
+        base_slug = re.sub(r"[^a-z0-9]+", "-", heading_title.lower()).strip("-") or "overview"
+        count = used_slugs.get(base_slug, 0) + 1
+        used_slugs[base_slug] = count
+        slug = base_slug if count == 1 else f"{base_slug}-{count}"
+        badge_label, target_section_id, target_card_id, project_id = _infer_canonical_targets(
+            file_path,
+            heading_title,
+            content,
+        )
+        chunks.append(
+            SeedChunk(
+                chunk_key=f"{file_path}::{slug}",
+                section=f"{file_path} - {heading_title}",
+                badge_label=badge_label,
+                target_section_id=target_section_id,
+                target_card_id=target_card_id,
+                project_id=project_id,
+                content=content,
+                metadata={
+                    "source_path": file_path,
+                    "commit_sha": commit_sha,
+                    "heading": heading_title,
+                },
+                source_path=file_path,
+                commit_sha=commit_sha,
+                content_hash=compute_content_hash(content),
+                is_active=True,
             )
         )
     return chunks
@@ -268,6 +378,10 @@ def upsert_resume_chunks(
     sql = """
         INSERT INTO public.resume_chunks (
             chunk_key,
+            source_path,
+            commit_sha,
+            content_hash,
+            is_active,
             section,
             badge_label,
             target_section_id,
@@ -280,6 +394,10 @@ def upsert_resume_chunks(
         )
         VALUES (
             %(chunk_key)s,
+            %(source_path)s,
+            %(commit_sha)s,
+            %(content_hash)s,
+            %(is_active)s,
             %(section)s,
             %(badge_label)s,
             %(target_section_id)s,
@@ -291,6 +409,10 @@ def upsert_resume_chunks(
             now()
         )
         ON CONFLICT (chunk_key) DO UPDATE SET
+            source_path = EXCLUDED.source_path,
+            commit_sha = EXCLUDED.commit_sha,
+            content_hash = EXCLUDED.content_hash,
+            is_active = EXCLUDED.is_active,
             section = EXCLUDED.section,
             badge_label = EXCLUDED.badge_label,
             target_section_id = EXCLUDED.target_section_id,
@@ -305,10 +427,15 @@ def upsert_resume_chunks(
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
             for chunk, vector in zip(chunks, embeddings, strict=True):
+                content_hash = chunk.content_hash or compute_content_hash(chunk.content)
                 cur.execute(
                     sql,
                     {
                         "chunk_key": chunk.chunk_key,
+                        "source_path": chunk.source_path,
+                        "commit_sha": chunk.commit_sha,
+                        "content_hash": content_hash,
+                        "is_active": chunk.is_active,
                         "section": chunk.section,
                         "badge_label": chunk.badge_label,
                         "target_section_id": chunk.target_section_id,
@@ -345,6 +472,10 @@ def upsert_resume_chunks_via_rest(
     payload = [
         {
             "chunk_key": chunk.chunk_key,
+            "source_path": chunk.source_path,
+            "commit_sha": chunk.commit_sha,
+            "content_hash": chunk.content_hash or compute_content_hash(chunk.content),
+            "is_active": chunk.is_active,
             "section": chunk.section,
             "badge_label": chunk.badge_label,
             "target_section_id": chunk.target_section_id,

@@ -1,0 +1,240 @@
+{
+  "name": "Weekly Portfolio Health & Index Watchdog",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000001",
+      "name": "Weekly Monday 09:00 Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [180, 220]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "watchdog-run",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000002",
+      "name": "Manual Watchdog Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 400],
+      "webhookId": "watchdog-manual-run"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst secret = ($env.AUTOMATION_WEBHOOK_SECRET || '').trim();\nif (!secret) {\n  throw new Error('AUTOMATION_WEBHOOK_SECRET environment variable is required.');\n}\n\nconst frontendUrl = ($env.FRONTEND_PUBLIC_URL || 'http://host.docker.internal:3000').replace(/\\/+$/, '');\nconst backendBase = ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000').replace(/\\/+$/, '');\n\nconst probeEndpoint = async (url, expectOkJson = false) => {\n  const started = Date.now();\n  const controller = new AbortController();\n  const timer = setTimeout(() => controller.abort(), 5000);\n  try {\n    const res = await fetch(url, { method: 'GET', signal: controller.signal });\n    const latencyMs = Date.now() - started;\n    if (!res.ok) {\n      return { healthy: false, latencyMs, detail: `HTTP ${res.status}` };\n    }\n    if (expectOkJson) {\n      const body = await res.json();\n      const ok = body && body.status === 'ok';\n      return { healthy: Boolean(ok), latencyMs, detail: ok ? 'status=ok' : 'status!=ok' };\n    }\n    return { healthy: true, latencyMs, detail: `HTTP ${res.status}` };\n  } catch (err) {\n    return { healthy: false, latencyMs: Date.now() - started, detail: String(err && err.message ? err.message : err) };\n  } finally {\n    clearTimeout(timer);\n  }\n};\n\nconst frontendProbe = await probeEndpoint(frontendUrl, false);\nconst backendProbe = await probeEndpoint(`${backendBase}/api/v1/health`, true);\n\nconst payload = {\n  frontend_healthy: frontendProbe.healthy,\n  backend_healthy: backendProbe.healthy,\n  frontend_latency_ms: frontendProbe.latencyMs,\n  backend_latency_ms: backendProbe.latencyMs,\n  auto_clean: true\n};\n\nconst rawBody = JSON.stringify(payload);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');\n\nreturn [{\n  json: {\n    rawBody,\n    timestamp,\n    signature,\n    frontend_detail: frontendProbe.detail,\n    backend_detail: backendProbe.detail\n  }\n}];"
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000003",
+      "name": "Probe Health & Sign Watchdog Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000').replace(/\\/+$/, '') + '/api/v1/automation/watchdog/cleanup' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Automation-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-Automation-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000004",
+      "name": "POST Watchdog Cleanup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-alert-required",
+              "leftValue": "={{ $json.alert_required }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000005",
+      "name": "Alert Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst probeMeta = $('Probe Health & Sign Watchdog Payload').first().json;\nconst probeBody = JSON.parse(probeMeta.rawBody || '{}');\n\nconst deletedKeys = Array.isArray(result.deleted_chunk_keys) ? result.deleted_chunk_keys : [];\nconst keysSummary = deletedKeys.length\n  ? deletedKeys.slice(0, 10).join(', ') + (deletedKeys.length > 10 ? ` (+${deletedKeys.length - 10} more)` : '')\n  : 'None';\n\nconst discordPayload = {\n  embeds: [\n    {\n      title: `[Portfolio Watchdog: ${String(result.status || 'degraded').toUpperCase()}]`,\n      color: result.status === 'degraded' ? 15158332 : 15105570,\n      fields: [\n        {\n          name: 'Frontend Health',\n          value: `${result.frontend_healthy ? 'Healthy' : 'UNHEALTHY'} (${probeBody.frontend_latency_ms ?? 'n/a'}ms, ${probeMeta.frontend_detail || ''})`,\n          inline: true\n        },\n        {\n          name: 'Backend Health',\n          value: `${result.backend_healthy ? 'Healthy' : 'UNHEALTHY'} (${probeBody.backend_latency_ms ?? 'n/a'}ms, ${probeMeta.backend_detail || ''})`,\n          inline: true\n        },\n        {\n          name: 'Stale Chunks Deleted',\n          value: `${result.stale_chunks_deleted ?? 0} / ${result.stale_chunks_found ?? 0} found`,\n          inline: true\n        },\n        {\n          name: 'Deleted Chunk Keys',\n          value: keysSummary.slice(0, 1000),\n          inline: false\n        },\n        {\n          name: 'Alert Reasons',\n          value: (Array.isArray(result.alert_reasons) && result.alert_reasons.length ? result.alert_reasons.join('\\n') : 'Watchdog alert triggered').slice(0, 1000),\n          inline: false\n        }\n      ],\n      timestamp: new Date().toISOString()\n    }\n  ]\n};\n\nreturn [{ json: { discordPayload } }];"
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000006",
+      "name": "Format Discord Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.discordPayload) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "c1b2c3d4-3001-4000-8000-000000000007",
+      "name": "POST Watchdog Discord Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "c1b2c3d4-3001-4000-8000-000000000008",
+      "name": "Finish Quietly",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1180, 420]
+    }
+  ],
+  "connections": {
+    "Weekly Monday 09:00 Schedule": {
+      "main": [
+        [
+          {
+            "node": "Probe Health & Sign Watchdog Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Watchdog Trigger": {
+      "main": [
+        [
+          {
+            "node": "Probe Health & Sign Watchdog Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Health & Sign Watchdog Payload": {
+      "main": [
+        [
+          {
+            "node": "POST Watchdog Cleanup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Watchdog Cleanup": {
+      "main": [
+        [
+          {
+            "node": "Alert Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Required?": {
+      "main": [
+        [
+          {
+            "node": "Format Discord Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finish Quietly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Discord Alert": {
+      "main": [
+        [
+          {
+            "node": "POST Watchdog Discord Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila"
+  },
+  "versionId": "006-weekly-watchdog-v1",
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "name": "Contact Lead Triage & Discord Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contact-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000001",
+      "name": "Contact Triage Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "contact-lead-triage"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'accepted', inquiry_id: ($json.body && $json.body.inquiry_id) || $json.inquiry_id || '' }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000002",
+      "name": "Respond 202 Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookData = $('Contact Triage Webhook').first().json;\nconst payload = webhookData.body || webhookData;\nconst inquiryId = String(payload.inquiry_id || '');\nconst name = String(payload.name || 'Portfolio Visitor').trim();\nconst email = String(payload.email || '').trim();\nconst subject = payload.subject ? String(payload.subject).trim() : '(No subject)';\nconst message = String(payload.message || '').trim();\n\nconst recruiterKeywords = [\n  'recruiter', 'recruiting', 'talent acquisition', 'hiring', 'interview',\n  'full-time', 'full time', 'job opening', 'position', 'candidate', 'compensation', 'salary'\n];\nconst freelanceKeywords = [\n  'freelance', 'contract', 'project quote', 'quote', 'mvp', 'consulting',\n  'consultant', 'client project', 'budget', 'timeline', 'build a website', 'web app'\n];\n\nconst classifyDeterministic = (subj, msg) => {\n  const text = `${subj} ${msg}`.toLowerCase();\n  if (recruiterKeywords.some((kw) => text.includes(kw))) return 'recruiter';\n  if (freelanceKeywords.some((kw) => text.includes(kw))) return 'freelance project';\n  return 'general inquiry';\n};\n\nlet intentCategory = classifyDeterministic(subject, message);\nlet triageSummary = `${intentCategory} from ${name}: ${message.slice(0, 220)}`;\n\nconst geminiKey = ($env.GEMINI_API_KEY || '').trim();\nif (geminiKey) {\n  try {\n    const controller = new AbortController();\n    const timer = setTimeout(() => controller.abort(), 4000);\n    const prompt = [\n      'Classify this portfolio contact message into exactly one intent_category from:',\n      '\"recruiter\", \"freelance project\", or \"general inquiry\".',\n      'Tie-break order: recruiter > freelance project > general inquiry.',\n      'Default ambiguous or ultra-short messages to \"general inquiry\".',\n      'Return strict JSON only: {\"intent_category\":\"...\",\"triage_summary\":\"<=240 chars summary\"}.',\n      `Name: ${name}`,\n      `Subject: ${subject}`,\n      `Message: ${message}`\n    ].join('\\n');\n\n    const res = await fetch(\n      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${encodeURIComponent(geminiKey)}`,\n      {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          contents: [{ parts: [{ text: prompt }] }],\n          generationConfig: { responseMimeType: 'application/json', temperature: 0 }\n        }),\n        signal: controller.signal\n      }\n    );\n    clearTimeout(timer);\n    if (res.ok) {\n      const data = await res.json();\n      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';\n      const parsed = JSON.parse(rawText);\n      if (['recruiter', 'freelance project', 'general inquiry'].includes(parsed.intent_category)) {\n        intentCategory = parsed.intent_category;\n      }\n      if (typeof parsed.triage_summary === 'string' && parsed.triage_summary.trim()) {\n        triageSummary = parsed.triage_summary.trim();\n      }\n    }\n  } catch (_err) {\n    // Deterministic fallback already populated above\n  }\n}\n\nconst summaryTruncated = triageSummary.slice(0, 500);\nconst excerptTruncated = message.slice(0, 1000);\n\nconst discordPayload = {\n  embeds: [\n    {\n      title: `[Contact Lead: ${intentCategory.toUpperCase()}] ${name}`,\n      color: intentCategory === 'recruiter' ? 3718904 : intentCategory === 'freelance project' ? 1752220 : 10070709,\n      fields: [\n        { name: 'Name', value: name || 'Unknown', inline: true },\n        { name: 'Email', value: email || 'Unknown', inline: true },\n        { name: 'Intent Category', value: intentCategory, inline: true },\n        { name: 'Subject', value: subject.slice(0, 200) || '(No subject)', inline: false },\n        { name: 'Summary', value: summaryTruncated || 'N/A', inline: false },\n        { name: 'Message Excerpt', value: excerptTruncated || 'N/A', inline: false }\n      ],\n      timestamp: new Date().toISOString()\n    }\n  ]\n};\n\nreturn [{\n  json: {\n    inquiry_id: inquiryId,\n    intent_category: intentCategory,\n    triage_summary: summaryTruncated,\n    discordPayload\n  }\n}];"
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000003",
+      "name": "Classify Intent (Gemini + Fallback)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.discordPayload) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000004",
+      "name": "POST Discord Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst discordResult = $input.first().json || {};\nconst classified = $('Classify Intent (Gemini + Fallback)').first().json;\nconst secret = ($env.AUTOMATION_WEBHOOK_SECRET || '').trim();\n\nif (!secret) {\n  throw new Error('AUTOMATION_WEBHOOK_SECRET environment variable is required.');\n}\n\nconst discordUrlConfigured = Boolean(($env.DISCORD_WEBHOOK_URL || '').trim());\nconst notificationSent = discordUrlConfigured && !discordResult.error;\n\nconst callbackPayload = {\n  inquiry_id: classified.inquiry_id,\n  intent_category: classified.intent_category,\n  triage_summary: classified.triage_summary,\n  notification_sent: notificationSent\n};\n\nconst rawBody = JSON.stringify(callbackPayload);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');\n\nreturn [{\n  json: {\n    rawBody,\n    timestamp,\n    signature\n  }\n}];"
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000005",
+      "name": "Sign HMAC Triage Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.BACKEND_API_BASE_URL || 'http://host.docker.internal:8000').replace(/\\/+$/, '') + '/api/v1/automation/contact-triage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Automation-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-Automation-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1b2c3d4-2001-4000-8000-000000000006",
+      "name": "POST Contact Triage Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 300]
+    }
+  ],
+  "connections": {
+    "Contact Triage Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond 202 Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 202 Accepted": {
+      "main": [
+        [
+          {
+            "node": "Classify Intent (Gemini + Fallback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Intent (Gemini + Fallback)": {
+      "main": [
+        [
+          {
+            "node": "POST Discord Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Discord Notification": {
+      "main": [
+        [
+          {
+            "node": "Sign HMAC Triage Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign HMAC Triage Callback": {
+      "main": [
+        [
+          {
+            "node": "POST Contact Triage Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila"
+  },
+  "versionId": "006-contact-lead-triage-v1",
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

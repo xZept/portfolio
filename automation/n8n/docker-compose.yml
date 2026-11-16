@@ -13,8 +13,15 @@ services:
       - TZ=${GENERIC_TIMEZONE:-Asia/Manila}
       - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678/}
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - BACKEND_API_BASE_URL=${BACKEND_API_BASE_URL:-http://host.docker.internal:8000}
+      - FRONTEND_PUBLIC_URL=${FRONTEND_PUBLIC_URL:-http://host.docker.internal:3000}
+      - AUTOMATION_WEBHOOK_SECRET=${AUTOMATION_WEBHOOK_SECRET:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GITHUB_RAW_BASE_URL=${GITHUB_RAW_BASE_URL:-https://raw.githubusercontent.com/xZept/portfolio/main}
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./workflows:/home/node/workflows:ro
 
 volumes:
   n8n_data:

@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:3000")
     gemini_model: str = Field(default="gemini-3.5-flash-lite")
     embedding_model: str = Field(default="gemini-embedding-2")
+    automation_webhook_secret: str = Field(default="")
+    n8n_contact_webhook_url: str = Field(default="")
+    discord_webhook_url: str = Field(default="")
+    frontend_public_url: str = Field(default="")
+    backend_public_url: str = Field(default="")
 
     @property
     def cors_origin_list(self) -> list[str]:

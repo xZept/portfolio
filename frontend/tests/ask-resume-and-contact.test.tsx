@@ -100,4 +100,85 @@ describe("User Story 4: Contact Section & Ask My Resume Hybrid RAG", () => {
     });
     expect(screen.getByTestId("ask-resume-mode-badge")).toHaveTextContent(/Local Fallback/i);
   });
+
+  it("submits the Contact inquiry form to POST /api/v1/contact and displays non-blocking confirmation", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        inquiry_id: "c4b9c8e2-901a-4b77-9214-35b1bc8e0f11",
+        status: "received",
+        triage_status: "pending",
+        message: "Thank you for reaching out!",
+      }),
+    } as Response);
+
+    render(<HomePage />);
+
+    const nameInput = screen.getByLabelText(/^Name/i);
+    const emailInput = screen.getByLabelText(/^Email/i);
+    const subjectInput = screen.getByLabelText(/^Subject/i);
+    const messageInput = screen.getByLabelText(/^Message/i);
+
+    expect(nameInput).toHaveAttribute("aria-invalid", "false");
+    expect(emailInput).toHaveAttribute("aria-invalid", "false");
+    expect(messageInput).toHaveAttribute("aria-invalid", "false");
+
+    await user.type(nameInput, "Sarah Jenkins");
+    await user.type(emailInput, "s.jenkins@techrecruiting.io");
+    await user.type(subjectInput, ".NET Full-Stack Role");
+    await user.type(messageInput, "We would love to schedule an interview.");
+
+    await user.click(screen.getByRole("button", { name: /Send Message/i }));
+
+    expect(await screen.findByTestId("contact-form-success")).toHaveTextContent(
+      /Message received! Allen has been notified and will get back to you shortly\./i,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [requestUrl, requestInit] = fetchSpy.mock.calls[0];
+    expect(String(requestUrl)).toMatch(/\/api\/v1\/contact$/);
+    expect(requestInit?.method).toBe("POST");
+    expect(JSON.parse(String(requestInit?.body))).toEqual({
+      name: "Sarah Jenkins",
+      email: "s.jenkins@techrecruiting.io",
+      subject: ".NET Full-Stack Role",
+      message: "We would love to schedule an interview.",
+    });
+
+    expect(nameInput).toHaveValue("");
+    expect(emailInput).toHaveValue("");
+    expect(subjectInput).toHaveValue("");
+    expect(messageInput).toHaveValue("");
+  });
+
+  it("validates Contact inquiry fields on submit, sets aria-invalid, and shows server error gracefully", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ detail: "Service temporarily unavailable" }),
+    } as Response);
+
+    render(<HomePage />);
+
+    const submitBtn = screen.getByRole("button", { name: /Send Message/i });
+    await user.click(submitBtn);
+
+    const nameInput = screen.getByLabelText(/^Name/i);
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(nameInput).toHaveFocus();
+    expect(screen.getByText(/Please enter your name/i)).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await user.type(nameInput, "Alex Rivera");
+    await user.type(screen.getByLabelText(/^Email/i), "alex@example.com");
+    await user.type(screen.getByLabelText(/^Message/i), "Interested in collaborating.");
+    await user.click(submitBtn);
+
+    expect(await screen.findByTestId("contact-form-error")).toHaveTextContent(
+      /Service temporarily unavailable/i,
+    );
+  });
 });

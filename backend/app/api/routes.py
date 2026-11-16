@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app.api.automation_routes import automation_router
 from app.config import Settings, get_settings
 from app.schemas.ask_resume import AskResumeRequest, AskResumeResponse, HealthResponse
 from app.services.rag_service import answer_resume_question, stream_resume_question
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio-rag"])
+router.include_router(automation_router)
 
 
 @router.get("/health", response_model=HealthResponse)
