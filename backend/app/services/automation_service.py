@@ -757,7 +757,7 @@ def dispatch_contact_to_n8n(
     payload: ContactSubmissionRequest,
     settings: Settings | None = None,
 ) -> None:
-    """Asynchronously dispatch contact inquiry to n8n webhook with 3s timeout & 1 retry."""
+    """Asynchronously dispatch contact inquiry to n8n webhook with 70s cold-start timeout & 1 retry."""
     cfg = settings or get_settings()
     webhook_url = cfg.n8n_contact_webhook_url.strip()
     if not webhook_url:
@@ -780,7 +780,7 @@ def dispatch_contact_to_n8n(
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            response = httpx.post(webhook_url, json=body, timeout=3.0)
+            response = httpx.post(webhook_url, json=body, timeout=70.0)
             response.raise_for_status()
             return
         except Exception as exc:
