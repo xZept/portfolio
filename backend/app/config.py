@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     supabase_db_url: str = Field(default="")
     supabase_url: str = Field(default="")
     supabase_service_role_key: str = Field(default="")
-    cors_origins: str = Field(default="http://localhost:3000,http://127.0.0.1:3000")
+    cors_origins: str = Field(
+        default="https://portfolio-seven-ashen-14.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
+    )
     gemini_model: str = Field(default="gemini-3.5-flash-lite")
     embedding_model: str = Field(default="gemini-embedding-2")
     automation_webhook_secret: str = Field(default="")
@@ -53,7 +55,11 @@ class Settings(BaseSettings):
                 seen.add(normalized)
                 origins.append(normalized)
 
-        return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+        return origins or [
+            "https://portfolio-seven-ashen-14.vercel.app",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
 
     @property
     def rag_configured(self) -> bool:
